@@ -13,6 +13,10 @@
 			return array_keys($keys) !== $keys;
 		}
 
+		public static function of_arrays(array $array) {
+			return is_array(current($array));
+		}
+
 		public function connect() {
 			$this->mysql = mysql_connect($this->config['host'], $this->config['login'], $this->config['password']);
 			mysql_set_charset($this->config['charaster']);
@@ -20,7 +24,18 @@
 			return $this;
 		}
 
+		public function from($table) {
+			if (!empty($table)) {
+				if (is_array($filter)) {
+					
+				} else {
+					return ' FROM ' . $table;
+				}
+			}
+		}
+
 		public function where($table, $filter = null) {
+
 			if (!empty($filter)) {
 				if (is_array($filter)) {
 					if ($this->is_assoc($filter)) {
@@ -49,10 +64,27 @@
 						}
 						return ' WHERE ' . implode(' AND ', $filters);
 					} else {
+						if (empty($this->keys[$table])) {
+							$this->fields($table);
+						}
 						return ' WHERE `' . $this->keys[$table] . '` IN ("' . implode('", "', $filter) . '")';
 					}
-				} else {
+				} elseif (is_integer($filter) or (is_numeric($filter) and mb_strlen($filter) < 5)) {
+					if (empty($this->keys[$table])) {
+						$this->fields($table);
+					}
 					return ' WHERE `' . $this->keys[$table] . '` = "' . $filter . '"';
+				} elseif (is_string($filter)) {
+					if (empty($this->fields[$table])) {
+						$this->fields($table);
+					}
+					$filters = array();
+					foreach ($this->fields[$table] as $key => $value) {
+						if ($value != 'datetime') {
+							$filters[] = '`' . $key . '` LIKE "%' . $filter . '%"';
+						}
+					}
+					return ' WHERE ' . implode(' OR ', $filters);
 				}
 			} else {
 				return '';
@@ -126,7 +158,7 @@
 				$return = array();
 				if (mysql_num_rows($result) > 0) {
 					while ($row = mysql_fetch_row($result)) {
-						$return[] = $row[0];
+						$return[$row[0]] = $row[1];
 						if ($row[3] == "PRI") {
 							$this->keys[$table] = $row[0];
 						}
@@ -162,6 +194,17 @@
 			return $this->count($table, $filter) > 0;
 		}
 
+		public function sql($sql) {
+			$result = mysql_query($sql);
+			$return = array();
+			if (mysql_num_rows($result) > 0) {
+				while ($row = mysql_fetch_assoc($result)) {
+					$return[] = $row;
+				}
+			}
+			return $return;
+		}
+
 		public function select($table, $filter = null, $order = null, $group = null, $limit = null) {
 
 			if (empty($this->keys[$table])) {
@@ -188,16 +231,16 @@
 			return $return;
 		}
 
-		public function keys($table, $filter = null, $order = null, $group = null, $limit = null) {
-			return array_keys($this->select($table, $filter, $order, $group, $limit));
+		public function ids($table, $filter = null, $order = null, $group = null, $limit = null) {
+			return $this->check($table, $filter) ? array_keys($this->select($table, $filter, $order, $group, $limit)) : false;
 		}
 
 		public function row($table, $filter = null, $order = null, $group = null) {
-			return current($this->select($table, $filter, $order, $group, 1));
+			return $this->check($table, $filter) ? current($this->select($table, $filter, $order, $group, 1)) : false;
 		}
 
 		public function id($table, $filter = null, $order = null, $group = null) {
-			return current($this->keys($table, $filter, $order, $group, 1));
+			return $this->check($table, $filter) ? current($this->ids($table, $filter, $order, $group, 1)) : false;
 		}
 
 		public function delete($table, $filter = null) {
@@ -212,7 +255,7 @@
 
 		public function insert($table, $data, $update = false) {
 
-			if (is_array(current($data))) {
+			if ($this->of_arrays($data)) {
 				$fields = array_keys(current($data));
 			} else {
 				$fields = array_keys($data);
@@ -220,7 +263,7 @@
 
 			$sql = 'INSERT IGNORE INTO ' . $table . ' (`' . implode('`, `', $fields) . '`) VALUES ';
 
-			if (is_array(current($data))) {
+			if ($this->of_arrays($data)) {
 				$rows = array();
 				foreach ($data as $row) {
 					foreach ($row as $key => $value) {
@@ -237,10 +280,10 @@
 			}
 
 			$result = mysql_query($sql);
-			if ($result) {
+			if ($result !== false) {
 				$id = mysql_insert_id($this->mysql);
 			}
-			return $id ? $id : ($result !== false);
+			return !empty($id) ? $id : ($result !== false);
 		}
 
 		public function update($table, $data, $filter = null) {

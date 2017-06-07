@@ -30,17 +30,29 @@
 
 		public function send($recipient, $subject, $content, $header) {
 
+			if ($recipient) {
+				$header .= 'To: ' . $recipient . "\r\n";
+			}
+
 			if ($subject) {
 				$header .= 'Subject: ' . $subject . "\r\n";
 			}
 
 			$this->socket = socket::factory('sslv3://' . $this->host, $this->port);
 
+			$this->socket->receive();
+
 			$this->socket
 				->send('EHLO ' . $this->host)
 				->send('AUTH LOGIN')
 				->send(base64_encode($this->login))
-				->send(base64_encode($this->password))
+				->send(base64_encode($this->password), false);
+
+			if (strpos($this->socket->receive(), '535') !== false) {
+				return false;
+			}
+
+			$this->socket
 				->send('MAIL FROM:' . $this->login)
 				->send('RCPT TO:' . $recipient)
 				->send('DATA')
@@ -48,6 +60,8 @@
 				->send($content, false)
 				->send('.', false)
 				->send('QUIT');
+
+			return true;
 		}
 
 		public function smtp($host, $port, $login = '', $password = '') {
