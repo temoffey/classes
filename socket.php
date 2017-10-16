@@ -18,20 +18,23 @@
 
 		public function receive() {
 			$data = '';
-			while ($str = fgets($this->socket, 515)) {
+			while ($str = fread($this->socket, 1024)) {
 				$data .= $str;
-				if (substr($str, 3, 1) == ' ') {
+				if (mb_strlen($str) < 1024) {
 					break;
 				}
 			}
 			return $data;
 		}
 
-		public function send($data, $receive = true) {
+		public function send($data) {
 			fputs($this->socket, $data . "\r\n");
-			if ($receive) {
-				$this->receive();
-			}
+			return $this;
+		}
+
+		public function exchange($data) {
+			$this->send($data);
+			$this->receive();
 			return $this;
 		}
 
